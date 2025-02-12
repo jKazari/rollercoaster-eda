@@ -1,0 +1,431 @@
+---
+title: "Rollercoasters EDA"
+output:
+  html_document:
+    df_print: paged
+editor_options:
+  chunk_output_type: inline
+---
+
+# 1 Introduction
+
+The objective of this report is to explore a rollercoaster dataset. We will be analyzing metrics such as rollercoaster height, speed or material of which the rollercoaster is made out of. We will try to answer some questions concerning the data, such as
+
+1.  Who are the top 5 manufacturers by number of rollercoasters?
+2.  What is the average speed and height of rollercoasters?
+3.  Are newer rollercoasters faster or taller than older ones?
+4.  What are the top 10 locations by number of rollercoasters?
+5.  Do taller rollercoasters tend to be faster?
+6.  How does the speed, height, or opening amount change over time?
+
+The dataset used for this analysis is sourced from Kaggle (link).
+
+# 2 Data preparation
+
+## 2.1 Importing libraries and data
+
+```{r}
+# Importing the necessary libraries
+library(tidyverse)
+library(data.table)
+library(dplyr)
+library(GGally)
+library(viridis)
+
+# Importing the dataset
+raw_data <- read.csv("coaster_db.csv")
+
+# Setting the option for size of plots
+options(repr.plot.width = 16, repr.plot.height = 9)
+
+my_colors <- c(
+    "Steel" = "#108dc7", 
+    "Wood" = "#ef8e38", 
+    "Other" = "#DBDBDB"
+)
+
+my_theme <- theme(
+  axis.text = element_text(size = 16),  # Axis tick labels
+  axis.title = element_text(size = 24),  # Axis titles
+  plot.title = element_text(size = 24, face = "bold"),  # Plot title
+  legend.text = element_text(size = 16),  # Legend text
+  legend.title = element_text(size = 16)  # Legend title
+)
+```
+
+## 2.2 Understanding the data
+
+```{r}
+# Checking the dataset dimensions
+dim(raw_data)
+```
+
+```{r}
+# Checking the dataset column names
+colnames(raw_data)
+```
+
+```{r}
+# Checking the dataset head
+head(raw_data)
+```
+
+```{r}
+# Checking the dataset tail
+tail(raw_data)
+```
+
+## 2.3 Preparing the data
+
+```{r}
+# Selecting only the relevant columns
+df <- raw_data %>%
+  select(
+    coaster_name, Location, Status, Type_Main, Manufacturer,
+    speed_mph, height_value, height_unit, Inversions_clean, Gforce_clean,
+    opening_date_clean
+  )
+
+# Checking the updated dataframe
+head(df)
+```
+
+```{r}
+# Creating a new unified height column
+df <- df %>%
+  mutate(
+    Height_unified = ifelse(
+      height_unit == "m", 
+      height_value * 3.28084,  # Convert meters to feet
+      height_value             # Keep feet as is
+    )
+  )
+```
+
+```{r}
+# Dropping unnecessary columns
+df <- df %>%
+  select(-height_value, -height_unit)
+```
+
+```{r}
+# Renaming columns
+df <- df %>%
+  rename(
+    Name = coaster_name,
+    Material = Type_Main,
+    Speed_mph = speed_mph,
+    Height_ft = Height_unified,
+    Inversions = Inversions_clean,
+    Gforce = Gforce_clean,
+    Opening_date = opening_date_clean
+  )
+
+# Checking the updated dataframe
+head(df)
+```
+
+```{r}
+# Checking the structure of the dataset
+str(df)
+```
+
+```{r}
+# Converting `Opening_date` to Date type
+df$Opening_date <- as.Date(df$Opening_date, format = "%Y-%m-%d")
+```
+
+```{r}
+# Extract year from Opening_date
+df <- df %>%
+  mutate(Opening_year = as.numeric(format(Opening_date, "%Y")))
+```
+
+```{r}
+# Summarizing basic descriptive statistics
+summary(df)
+```
+
+```{r}
+# Replacing empty strings with NA in all character columns
+df <- df %>%
+  mutate(across(where(is.character), ~ ifelse(. == "", NA, .)))
+
+# Checking the result
+head(df)
+```
+
+```{r}
+# Checking for missing values in each column
+colSums(is.na(df))
+```
+
+```{r}
+# Replacing NA in Status and Manufacturer with "Unknown"
+df <- df %>%
+  mutate(
+    Status = ifelse(is.na(Status), "Unknown", Status),
+    Manufacturer = ifelse(is.na(Manufacturer), "Unknown", Manufacturer)
+  )
+```
+
+```{r}
+# Dropping the Gforce column
+df <- df %>%
+  select(-Gforce)
+```
+
+```{r}
+# Checking for missing values
+colSums(is.na(df))
+```
+
+```{r}
+# Imputating missing speed_mph with the median
+df <- df %>%
+  mutate(Speed_mph = ifelse(is.na(Speed_mph), median(Speed_mph, na.rm = TRUE), Speed_mph))
+
+# Imputating missing height_ft with the median
+df <- df %>%
+  mutate(Height_ft = ifelse(is.na(Height_ft), median(Height_ft, na.rm = TRUE), Height_ft))
+
+# Checking for missing values
+colSums(is.na(df))
+```
+
+```{r}
+# Removing rows with height_ft > 500 feet
+df <- df %>%
+  filter(Height_ft <= 500)
+```
+
+# 3 Exploratory data analysis
+
+## 3.1 Basic univariate analysis
+
+```{r}
+# Density plot for Speed
+ggplot(df, aes(Speed_mph)) + 
+    geom_density(alpha = 0.2, aes(fill = Material, colour = Material)) +
+    scale_fill_manual(values = my_colors) +
+    scale_color_manual(values = my_colors) +
+    labs(
+        title = "Density Plot of Rollercoaster Speed by Material",
+        x = "Speed (mph)",
+        y = "Density"
+    ) +
+    theme_minimal()
+```
+
+```{r}
+# Histogram of speed
+ggplot(df, aes(Height_ft)) + 
+    geom_histogram(alpha = 0.1, binwidth = 20, aes(fill = Material, colour = Material)) +
+    scale_fill_manual(values = my_colors) +
+    scale_color_manual(values = my_colors) +
+    labs(
+        title = "Histogram of Rollercoaster Height (ft) by Material",
+        x = "Height (ft)",
+        y = "Density"
+    ) +
+    theme_minimal()
+```
+
+```{r}
+# Boxplot of Height by Material
+ggplot(df, aes(x = Material, y = Height_ft, fill = Material, colour = Material)) +
+    geom_boxplot() +
+    scale_fill_manual(values = alpha(my_colors, 0.2)) +
+    scale_color_manual(values = my_colors) +
+    labs(
+        title = "Rollercoaster Height by Material",
+        x = "Material",
+        y = "Height (ft)"
+    ) +
+    theme_minimal()
+```
+
+```{r}
+# Line Plot of Trends Over Time
+df %>% count(Opening_year) %>%
+    ggplot(aes(x = Opening_year, y = n)) +
+    ylim(0, 40) +
+    geom_line(color = "#108dc7", size = 0.5, alpha = 0.9, na.rm = TRUE) +
+    geom_smooth(method = "loess", formula = "y ~ x", se = FALSE, color = "#108dc7", size = 1.5, span = 0.2, na.rm = TRUE) +
+    labs(
+      title = "Trends in Rollercoaster Openings Over Time", 
+      x = "Year", 
+      y = "Count"
+    ) + 
+    theme_minimal()
+```
+
+## 3.2 Basic multivariate analysis
+
+```{r}
+# Scatterplot: Speed vs. Height
+ggplot(df, aes(x = Height_ft, y = Speed_mph)) +
+    geom_point(alpha = 0.4, size = 3, aes(fill = Material, colour = Material)) +
+    scale_fill_manual(values = my_colors) +
+    scale_color_manual(values = my_colors) +
+    labs(
+    title = "Speed vs. Height of Rollercoasters by Material",
+        x = "Height (ft)",
+        y = "Speed (mph)"
+    ) +
+    theme_minimal()
+```
+
+```{r}
+# Scatterplot: Speed vs. Inversions
+ggplot(df, aes(x = Inversions, y = Speed_mph)) +
+    geom_point(alpha = 0.4, size = 3, aes(fill = Material, colour = Material)) +
+    scale_fill_manual(values = my_colors) +
+    scale_color_manual(values = my_colors) +
+    labs(
+    title = "Speed vs. Inversions of Rollercoasters by Material",
+        x = "Number of Inversions",
+        y = "Speed (mph)"
+    ) +
+    theme_minimal()
+```
+
+```{r}
+# Scatterplot: Height vs. Inversions
+ggplot(df, aes(x = Height_ft, y = Inversions)) +
+    geom_point(alpha = 0.4, size = 3, aes(fill = Material, colour = Material)) +
+    scale_fill_manual(values = my_colors) +
+    scale_color_manual(values = my_colors) +
+    labs(
+    title = "Height vs. Inversions of Rollercoasters by Material",
+        x = "Height (ft)",
+        y = "Number of Inversions"
+    ) +
+    theme_minimal()
+```
+
+# 4 Key findings
+
+## 4.1 Who are the top 5 manufacturers by number of rollercoasters?
+
+```{r}
+# Top 5 manufacturers by number of rollercoasters
+top_manufacturers <- df %>%
+  group_by(Manufacturer) %>%
+  summarise(Count = n()) %>%
+  arrange(desc(Count)) %>%
+  head(5)
+
+# View the result
+top_manufacturers
+```
+
+## 4.2 What is the average speed and height of rollercoasters?
+
+```{r}
+# Average speed and height
+avg_speed <- mean(df$Speed_mph, na.rm = TRUE)
+avg_height <- mean(df$Height_ft, na.rm = TRUE)
+
+# View the results
+cat("Average Speed:", round(avg_speed, 2), "mph\n")
+cat("Average Height:", round(avg_height, 2), "ft\n")
+```
+
+## 4.3 Are newer rollercoasters faster or taller than older ones?
+
+```{r}
+# Trends over time
+trends_over_time <- df %>%
+  group_by(Opening_year) %>%
+  summarise(
+    Avg_Speed = mean(Speed_mph, na.rm = TRUE),
+    Avg_Height = mean(Height_ft, na.rm = TRUE),
+    Count = n()
+  )
+
+# Reshaping the data into long format
+trends_over_time_long <- trends_over_time %>%
+    pivot_longer(
+        cols = c(Avg_Speed, Avg_Height),
+        names_to = "Metric",
+        values_to = "Value"
+    )
+
+# Plotting trends with a color legend
+ggplot(trends_over_time_long, aes(x = Opening_year)) +
+    geom_line(aes(y = Value, color = Metric), alpha = 0.9, size = 0.5, na.rm = TRUE) + 
+    geom_smooth(aes(y = Value, color = Metric), method = "loess", formula = "y ~ x", se = FALSE, size = 1.5, span = 0.2, na.rm = TRUE) + 
+    scale_color_manual(
+        values = c("Avg_Speed" = "#108dc7", "Avg_Height" = "#ef8e38"), 
+        labels = c("Avg_Speed" = "Speed (mph)", "Avg_Height" = "Height (ft)")
+    ) +
+    labs(
+        title = "Trends in Rollercoaster Speed and Height Over Time",
+        x = "Year",
+        y = "Average Value",
+        color = "Metric"
+    ) +
+    theme_minimal()
+```
+
+As we can clearly see from the plot, there is a positive trend in rollercoasters becoming faster and higher over time.
+
+## 4.4 What are the top 10 locations by number of rollercoasters?
+
+```{r}
+# Top 10 locations by number of rollercoasters
+top_locations <- df %>%
+    filter(Location != "Other") %>%
+    group_by(Location) %>%
+    summarise(Count = n()) %>%
+    arrange(desc(Count)) %>%
+    head(10)
+
+# View the result
+top_locations
+```
+
+## 4.5 Do taller rollercoasters tend to be faster?
+
+```{r}
+# Scatterplot: Speed vs. Height
+ggplot(df, aes(x = Height_ft, y = Speed_mph)) +
+    geom_point(alpha = 0.4, size = 3, color = "#108dc7") +
+    geom_smooth(method = "lm", formula = "y ~ x", se = TRUE, color = "#ef8e38", fill = "#ef8e38", size = 1.5, linetype = "aa") +
+    labs(
+    title = "Speed vs. Height of Rollercoasters",
+        x = "Height (ft)",
+        y = "Speed (mph)"
+    ) +
+    theme_minimal()
+```
+
+```{r}
+# Correlation coefficient
+cat("Correlation coefficient:", round(cor(df$Height_ft, df$Speed_mph, use = "complete.obs"), 2))
+```
+
+Yes, the correlation is very strong.
+
+## 4.6 How does the amount of rollercoaster openings change over time?
+
+```{r}
+# Bar chart of Rollercoaster Openings Over Time
+ggplot(df, aes(x = Opening_year)) +
+    geom_bar(, color = "#108dc7", fill = "#108dc7", alpha = 0.1, na.rm = TRUE) + 
+    scale_x_continuous(
+        breaks = seq(1880, 2025, by = 10), 
+        labels = seq(1880, 2025, by = 10)
+    ) +
+    labs(
+        title = "Histogram of Rollercoaster Openings Over Time", 
+        x = "Year", 
+        y = "Count"
+        ) +
+    ylim(0, 40) + 
+    theme_minimal() + 
+    theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+As we can see from the plot, there was a peak around year 2000 and from that time there is a slight negative trend.
